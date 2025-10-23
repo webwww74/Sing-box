@@ -28,6 +28,8 @@ Telegram交流反馈群组：https://t.me/eooceu
 ## VPS一键四协议安装脚本
 ```
 bash <(curl -Ls https://raw.githubusercontent.com/eooce/sing-box/main/sing-box.sh)
+```
+```
 bash <(curl -Ls https://github.com/webwww74/Sing-box/blob/fd3390a8b43d949d8104cec577dffc8ce7464f1e/sing-box.sh)
 ```
 ## vps带端口变量运行示列
