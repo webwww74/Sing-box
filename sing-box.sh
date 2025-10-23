@@ -442,6 +442,7 @@ NoNewPrivileges=yes
 TimeoutStartSec=0
 ExecStart=/etc/sing-box/argo tunnel --url http://localhost:8001 --no-autoupdate --edge-ip-version auto --protocol http2 > /etc/sing-box/argo.log
 Restart=on-failure
+1212
 RestartSec=5s
 
 [Install]
@@ -478,6 +479,7 @@ EOF
 
 description="Cloudflare Tunnel"
 command="/etc/sing-box/argo tunnel --url http://localhost:8001 --no-autoupdate --edge-ip-version auto --protocol http2 > /etc/sing-box/argo.log"
+1313
 #!/command_args="-c '/etc/sing-box/argo tunnel --url http://localhost:8001 --no-autoupdate --edge-ip-version auto --protocol http2 > /etc/sing-box/argo.log 2>&1'"
 command_background=true
 pidfile="/var/run/argo.pid"
