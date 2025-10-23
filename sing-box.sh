@@ -457,7 +457,7 @@ EOF
         yum update -y ca-certificates
         bash -c 'echo "0 0" > /proc/sys/net/ipv4/ping_group_range'
     fi
-    systemctl daemon-reload 
+    systemctl restart 
     systemctl enable sing-box
     systemctl start sing-box
     systemctl enable argo
@@ -677,7 +677,7 @@ manage_service() {
                 if command_exists rc-service; then
                     rc-service "$service_name" start
                 elif command_exists systemctl; then
-                    systemctl daemon-reload
+                    systemctl restart
                     systemctl start "$service_name"
                 fi
                 
@@ -725,7 +725,7 @@ manage_service() {
                 if command_exists rc-service; then
                     rc-service "$service_name" restart
                 elif command_exists systemctl; then
-                    systemctl daemon-reload
+                    systemctl restart
                     systemctl restart "$service_name"
                 fi
                 
@@ -808,7 +808,7 @@ uninstall_singbox() {
                 systemctl disable argo
 
                 # 重新加载 systemd
-                systemctl daemon-reload || true
+                systemctl restart || true
             fi
            # 删除配置文件和日志
            rm -rf "${work_dir}" || true
