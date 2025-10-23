@@ -33,6 +33,10 @@ bash <(curl -Ls https://raw.githubusercontent.com/eooce/sing-box/main/sing-box.s
 ```
 bash <(curl -Ls https://raw.githubusercontent.com/webwww74/Sing-box/main/sing-box.sh)
 ```
+## VPS一键四协议安装脚本for debian13(guess)
+```
+bash <(curl -Ls https://raw.githubusercontent.com/webwww74/Sing-box/main/sb-guess.sh)
+```
 ## vps带端口变量运行示列
 PORT=开放的端口 确保后面3个端口可用 CFIP为优选IP或优选域名，CFPORT为优选ip或优选域名对应的端口
 ```
