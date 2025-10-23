@@ -28,6 +28,7 @@ Telegram交流反馈群组：https://t.me/eooceu
 ## VPS一键四协议安装脚本
 ```
 bash <(curl -Ls https://raw.githubusercontent.com/eooce/sing-box/main/sing-box.sh)
+bash <(curl -Ls https://github.com/webwww74/Sing-box/blob/fd3390a8b43d949d8104cec577dffc8ce7464f1e/sing-box.sh)
 ```
 ## vps带端口变量运行示列
 PORT=开放的端口 确保后面3个端口可用 CFIP为优选IP或优选域名，CFPORT为优选ip或优选域名对应的端口
