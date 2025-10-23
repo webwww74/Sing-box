@@ -839,7 +839,7 @@ create_shortcut() {
   cat > "$work_dir/sb.sh" << EOF
 #!/usr/bin/env bash
 
-bash <(curl -Ls https://raw.githubusercontent.com/webwww74/Sing-box/fd3390a8b43d949d8104cec577dffc8ce7464f1e/sing-box.sh) \$1
+bash <(curl -Ls https://raw.githubusercontent.com/webwww74/Sing-box/main/sing-box.sh) \$1
 EOF
   chmod +x "$work_dir/sb.sh"
   ln -sf "$work_dir/sb.sh" /usr/bin/sb
