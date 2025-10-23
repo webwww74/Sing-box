@@ -29,6 +29,7 @@ Telegram交流反馈群组：https://t.me/eooceu
 ```
 bash <(curl -Ls https://raw.githubusercontent.com/eooce/sing-box/main/sing-box.sh)
 ```
+## VPS一键四协议安装脚本(for debian13(docker))
 ```
 bash <(curl -Ls https://raw.githubusercontent.com/webwww74/Sing-box/main/sing-box.sh)
 ```
