@@ -31,7 +31,7 @@ bash <(curl -Ls https://raw.githubusercontent.com/eooce/sing-box/main/sing-box.s
 ```
 ## VPS一键四协议安装脚本NO-nginx
 ```
-bash <(curl -Ls https://raw.githubusercontent.com/eooce/sing-box/main/sing-box-nn.sh)
+bash <(curl -Ls https://raw.githubusercontent.com/webwww74/sing-box/main/sing-box-nn.sh)
 ```
 ## VPS一键四协议安装脚本for debian13(docker)
 ```
