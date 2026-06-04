@@ -1282,7 +1282,7 @@ ingress:
   - hostname: $ArgoDomain
     service: http://localhost:8001
     originRequest:
-      noTLSVerify: true
+      noTLSVerify: false
   - service: http_status:404
 EOF
 
