@@ -24,7 +24,7 @@ config = {
     'NEZHA_PORT': os.environ.get('NEZHA_PORT', ''),     # 哪吒v1请留空，哪吒v0 agent端口
     'NEZHA_KEY': os.environ.get('NEZHA_KEY', ''),       # 哪吒v1的NZ_CLIENT_SECRET或哪吒v0-agent密钥
     'ARGO_DOMAIN': os.environ.get('ARGO_DOMAIN', 'kata.cfyou.kdns.fr'),   # 固定隧道域名,留空即启用临时隧道
-    'ARGO_AUTH': os.environ.get('ARGO_AUTH', '1OTJlMjkzMjg1MzgyZThlM2EzZDEzMmJjYWQiLCJ0IjoiZmFhOTBkNTAtZmI4Ni00Y2MwLTg2NzQtODRiZWRhMWUwZGZjIiwicyI6Ik1qY3lNbUkwWkRNdE56aGtaUzAwTlRoakxUbGpPV0l0TURBNU9UVmlaamsxTkRKaSJ9'),       # 固定隧道token或json,留空即启用临时隧道,json获取:https://json.zone.id
+    'ARGO_AUTH': os.environ.get('ARGO_AUTH', 'eyJhIjoiNTg2M2Y1OTJlMjkzMjg1MzgyZThlM2EzZDEzMmJjYWQiLCJ0IjoiZmFhOTBkNTAtZmI4Ni00Y2MwLTg2NzQtODRiZWRhMWUwZGZjIiwicyI6Ik1qY3lNbUkwWkRNdE56aGtaUzAwTlRoakxUbGpPV0l0TURBNU9UVmlaamsxTkRKaSJ9'),       # 固定隧道token或json,留空即启用临时隧道,json获取:https://json.zone.id
     'ARGO_PORT': os.environ.get('ARGO_PORT', '8001'),   # argo端口 使用固定隧道token,cloudflare后台设置的端口需和这里对应
     'CFIP': os.environ.get('CFIP', 'saas.sin.fan'),     # 优选域名或优选ip
     'CFPORT': os.environ.get('CFPORT', '443'),          # 优选域名或优选ip对应端口
