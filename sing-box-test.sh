@@ -218,7 +218,7 @@ install_singbox() {
 
     # 下载sing-box,cloudflared
     [ ! -d "${work_dir}" ] && mkdir -p "${work_dir}" && chmod 777 "${work_dir}"
-    # latest_version=$(curl -s "https://api.github.com/repos/SagerNet/sing-box/releases" | jq -r '[.[] | select(.prerelease==false)][0].tag_name | sub("^v"; "")')
+    # latest_version=$(curl -s "https://api.github.com/repos/SagerNet/sing-box/releases" |  -r '[.[] | select(.prerelease==false)][0].tag_name | sub("^v"; "")')
     # curl -sLo "${work_dir}/${server_name}.tar.gz" "https://github.com/SagerNet/sing-box/releases/download/v${latest_version}/sing-box-${latest_version}-linux-${ARCH}.tar.gz"
     # curl -sLo "${work_dir}/qrencode" "https://github.com/eooce/test/releases/download/${ARCH}/qrencode-linux-${ARCH}"
     curl -sLo "${work_dir}/qrencode" "https://$ARCH.ssss.nyc.mn/qrencode"
@@ -1015,7 +1015,7 @@ change_config() {
                 else
                     new_sni="$new_sni"
                 fi
-                jq --arg new_sni "$new_sni" '
+                 --arg new_sni "$new_sni" '
                 (.inbounds[] | select(.type == "vless") | .tls.server_name) = $new_sni |
                 (.inbounds[] | select(.type == "vless") | .tls.reality.handshake.server) = $new_sni
                 ' "$config_dir" > "$config_file.tmp" && mv "$config_file.tmp" "$config_dir"
@@ -1375,7 +1375,7 @@ vmess_url=$(grep -o 'vmess://[^ ]*' "$client_dir")
 vmess_prefix="vmess://"
 encoded_vmess="${vmess_url#"$vmess_prefix"}"
 decoded_vmess=$(echo "$encoded_vmess" | base64 --decode)
-updated_vmess=$(echo "$decoded_vmess" | jq --arg new_domain "$ArgoDomain" '.host = $new_domain | .sni = $new_domain')
+updated_vmess=$(echo "$decoded_vmess" |  --arg new_domain "$ArgoDomain" '.host = $new_domain | .sni = $new_domain')
 encoded_updated_vmess=$(echo "$updated_vmess" | base64 | tr -d '\n')
 new_vmess_url="${vmess_prefix}${encoded_updated_vmess}"
 new_content=$(echo "$content" | sed "s|$vmess_url|$new_vmess_url|")
@@ -1392,10 +1392,10 @@ check_nodes() {
     lujing=$(sed -n 's|.*location = /\([^ ]*\).*|\1|p' "/etc/nginx/conf.d/sing-box.conf")
     sub_port=$(sed -n 's/^\s*listen \([0-9]\+\);/\1/p' "/etc/nginx/conf.d/sing-box.conf")
     base64_url="http://${server_ip}:${sub_port}/${lujing}"
-    green "\n\nSurge订阅链接: ${purple}https://sublink.eooce.com/surge?config=${base64_url}${re}\n"
-    green "sing-box订阅链接: ${purple}https://sublink.eooce.com/singbox?config=${base64_url}${purple}\n"
-    green "Mihomo/Clash系列订阅链接: ${purple}https://sublink.eooce.com/clash?config=${base64_url}${re}\n"
-    green "V2rayN,Shadowrocket,Nekobox,Loon,Karing,Sterisand订阅链接: ${purple}${base64_url}${re}\n"
+#    green "\n\nSurge订阅链接: ${purple}https://sublink.eooce.com/surge?config=${base64_url}${re}\n"
+#    green "sing-box订阅链接: ${purple}https://sublink.eooce.com/singbox?config=${base64_url}${purple}\n"
+#    green "Mihomo/Clash系列订阅链接: ${purple}https://sublink.eooce.com/clash?config=${base64_url}${re}\n"
+#    green "V2rayN,Shadowrocket,Nekobox,Loon,Karing,Sterisand订阅链接: ${purple}${base64_url}${re}\n"
 }
 
 change_cfip() {
@@ -1449,7 +1449,7 @@ content=$(cat "$client_dir")
 vmess_url=$(grep -o 'vmess://[^ ]*' "$client_dir")
 encoded_part="${vmess_url#vmess://}"
 decoded_json=$(echo "$encoded_part" | base64 --decode 2>/dev/null)
-updated_json=$(echo "$decoded_json" | jq --arg cfip "$cfip" --argjson cfport "$cfport" \
+updated_json=$(echo "$decoded_json" |  --arg cfip "$cfip" --argjson cfport "$cfport" \
     '.add = $cfip | .port = $cfport')
 new_encoded_part=$(echo "$updated_json" | base64 -w0)
 new_vmess_url="vmess://$new_encoded_part"
