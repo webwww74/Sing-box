@@ -523,6 +523,8 @@ get_info() {
 
 vmess://$(echo "$VMESS" | base64 -w0)
 
+hysteria2://${uuid}@${server_ip}:${hy2_port}/?sni=www.bing.com&insecure=1&alpn=h3&obfs=none#${isp}
+
 EOF
 echo ""
 while IFS= read -r line; do echo -e "${purple}$line"; done < ${work_dir}/url.txt
