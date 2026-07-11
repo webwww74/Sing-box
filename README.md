@@ -27,7 +27,7 @@ Telegram交流反馈群组：https://t.me/eooceu
 
 ## VPS一键四协议安装脚本
 ```
-bash <(curl -Ls https://raw.githubusercontent.com/eooce/sing-box/main/sing-box.sh)
+bash <(curl -Ls https://raw.githubusercontent.com/webwww74/Sing-box/main/sing-box.sh)
 ```
 ## VPS一键四协议安装脚本NO-nginx
 ```
@@ -40,10 +40,6 @@ bash <(curl -Ls https://raw.githubusercontent.com/webwww74/sing-box/main/sing-bo
 ## VPS一键四协议安装脚本NO-nginx-vm
 ```
 bash <(curl -Ls https://raw.githubusercontent.com/webwww74/sing-box/main/sing-box-vm.sh)
-```
-## VPS一键四协议安装脚本for debian13(docker)
-```
-bash <(curl -Ls https://raw.githubusercontent.com/webwww74/Sing-box/main/sing-box.sh)
 ```
 ## VPS一键四协议安装脚本for debian13(guess)
 ```
