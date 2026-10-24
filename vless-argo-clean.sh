@@ -16,9 +16,18 @@
 #   bash vless-argo-clean.sh -d 你的域名            # 不带 token 时隐藏输入
 #   bash vless-argo-clean.sh -d 你的域名 -t 'TOKEN' \
 #       -u 11111111-2222-3333-4444-555555555555 -w /vless -p 8002
+#   bash vless-argo-clean.sh --temporary            # 临时隧道：不用 Token/域名，
+#                                                   # cloudflared 随机给一个 trycloudflare.com 域名
+#
+# 隧道类型（固定 vs 临时）：
+#   固定隧道：你自己的域名 + Argo Token，域名固定不变，重启也不变，
+#             但必须先在 Cloudflare 仪表盘建 Tunnel 并加 hostname。
+#   临时隧道：不用 Token、不用自己域名、不用建 Tunnel，cloudflared 一跑
+#             就随机分配一个 *.trycloudflare.com 域名；代价是域名每次重启
+#             都会变，进程一停节点就没了，只适合临时测试，不适合长期用。
 #
 # 选择菜单（不带参数或 --menu 时出现）：
-#   1 安装 / 重装（含换域名：用新域名重装即可）
+#   1 安装 / 重装（含换域名：用新域名重装即可；安装时会先问固定还是临时）
 #   2 卸载
 #   3 重新启动 argo（只重启 cloudflared，不动 sing-box）
 #   4 查看状态
@@ -34,8 +43,9 @@
 #   --no-systemd      不写 systemd，改用安装目录下的 start.sh / stop.sh
 #   --dry-run         只生成配置和客户端链接到 ./vless-argo-clean-out，
 #                     不下载、不装服务、不启动
+#   --temporary       临时隧道模式：不用 -d/-t，域名由 cloudflared 随机分配
 #   --status          查看运行状态和客户端链接
-#   --restart-argo    只重启 cloudflared（不重启 sing-box）
+#   --restart-argo    只重启 cloudflared（不重启 sing-box；临时隧道重启后域名会变，脚本会重写 client.txt）
 #   --menu            显示选择菜单（不带参数时默认就是菜单）
 #   --uninstall [--force]  停止并删除本脚本装的东西
 #   -h, --help        显示帮助
@@ -67,6 +77,7 @@ USE_SYSTEMD=1
 DRY_RUN=0
 FORCE=0
 ACTION="install"
+TUNNEL_MODE="fixed"
 SHOW_MENU=0
 # 不带任何参数时默认进菜单；带参数走原来的命令行方式，不被菜单打断
 [ $# -eq 0 ] && SHOW_MENU=1
@@ -74,6 +85,50 @@ SHOW_MENU=0
 usage() {
     sed -n '2,/^# ===/p' "$0"
     exit 0
+}
+
+# 从 cloudflared 日志（systemd 用 journal，nohup 用 cloudflared.log）
+# 里找临时隧道分配的域名，找不到返回空，不报错
+trycloudflare_domain() {
+    local dom=""
+    if [ -f /etc/systemd/system/vless-argo-clean-cloudflared.service ] && [ -d /run/systemd/system ]; then
+        dom="$(journalctl -u vless-argo-clean-cloudflared --no-pager -n 100 2>/dev/null \
+            | grep -o 'https://[A-Za-z0-9-]*\.trycloudflare\.com' | head -1 | sed 's|https://||' || true)"
+    elif [ -f "$INSTALL_DIR/cloudflared.log" ]; then
+        dom="$(grep -o 'https://[A-Za-z0-9-]*\.trycloudflare\.com' "$INSTALL_DIR/cloudflared.log" 2>/dev/null | head -1 | sed 's|https://||' || true)"
+    fi
+    printf '%s' "$dom"
+}
+
+# 用已找到的临时域名 + config.json 里的 UUID/WS 路径，重写 client.txt
+regenerate_temporary_link() {
+    local dom="$1" uuid path path_enc
+    uuid="$(sed -n 's/.*"uuid": "\([^"]*\)".*/\1/p' "$INSTALL_DIR/config.json" | head -1)"
+    path="$(sed -n 's/.*"path": "\([^"]*\)".*/\1/p' "$INSTALL_DIR/config.json" | head -1)"
+    [ -n "$dom" ] && [ -n "$uuid" ] && [ -n "$path" ] || return 1
+    path_enc="%2F${path#/}"
+    printf 'vless://%s@%s:443?encryption=none&security=tls&sni=%s&type=ws&host=%s&path=%s#vless-argo\n' \
+        "$uuid" "$dom" "$dom" "$dom" "$path_enc" > "$INSTALL_DIR/client.txt"
+    cat "$INSTALL_DIR/client.txt"
+}
+
+# 等临时隧道域名出现（最多约 60 秒），找到了就重写 client.txt 并打印
+wait_for_temporary_domain() {
+    local i dom
+    for i in $(seq 1 20); do
+        dom="$(trycloudflare_domain)"
+        if [ -n "$dom" ]; then
+            echo "临时隧道域名：$dom"
+            regenerate_temporary_link "$dom" || return 1
+            return 0
+        fi
+        sleep 3
+    done
+    echo "警告：60 秒内没在日志里找到 trycloudflare.com 域名，请手动看日志："
+    echo "  systemd：journalctl -u vless-argo-clean-cloudflared --no-pager | grep trycloudflare"
+    echo "  nohup：grep -o 'https://[^ ]*trycloudflare.com' $INSTALL_DIR/cloudflared.log"
+    echo "找到域名后，把 client.txt 里的 __TEMPORARY_DOMAIN__ 换成它即可"
+    return 1
 }
 
 while [ $# -gt 0 ]; do
@@ -86,6 +141,7 @@ while [ $# -gt 0 ]; do
         --install-dir) INSTALL_DIR="${2:-}"; shift 2 ;;
         --no-systemd) USE_SYSTEMD=0; shift ;;
         --dry-run) DRY_RUN=1; shift ;;
+        --temporary) TUNNEL_MODE="temporary"; shift ;;
         --status) ACTION="status"; shift ;;
         --restart-argo) ACTION="restart-argo"; shift ;;
         --menu) SHOW_MENU=1; shift ;;
@@ -108,12 +164,22 @@ if [ "$SHOW_MENU" -eq 1 ] && [ "$ACTION" = "install" ]; then
     read -r choice
     case "$choice" in
         1)
-            printf '域名（例如 vless.example.com）：'
-            read -r DOMAIN
-            if [ -z "$TOKEN" ] && [ "$DRY_RUN" -eq 0 ]; then
-                printf 'Argo Token（输入时不回显，留空则用环境变量 ARGO_AUTH）：'
-                read -rs TOKEN
-                echo
+            printf '隧道类型：1 固定隧道（自己的域名 + Token，长期用）  2 临时隧道（随机 trycloudflare 域名，重启会变，只适合临时测试） [默认 1]：'
+            read -r tunnel_choice
+            case "$tunnel_choice" in
+                2) TUNNEL_MODE="temporary" ;;
+                *) TUNNEL_MODE="fixed" ;;
+            esac
+            if [ "$TUNNEL_MODE" = "fixed" ]; then
+                printf '域名（例如 vless.example.com）：'
+                read -r DOMAIN
+                if [ -z "$TOKEN" ] && [ "$DRY_RUN" -eq 0 ]; then
+                    printf 'Argo Token（输入时不回显，留空则用环境变量 ARGO_AUTH）：'
+                    read -rs TOKEN
+                    echo
+                fi
+            else
+                echo "临时隧道：不需要域名和 Token，启动后 cloudflared 会随机分配域名"
             fi
             printf 'UUID（留空自动生成；重装想保持原链接就填原 UUID）：'
             read -r UUID_ARG
@@ -134,11 +200,22 @@ fi
 
 # ---- 只重启 argo：不动 sing-box，只重启 cloudflared ----
 if [ "$ACTION" = "restart-argo" ]; then
+    # 判断当前装的是固定还是临时：优先看安装时写的 tunnel_mode 文件
+    RESTART_MODE="fixed"
+    if [ -f "$INSTALL_DIR/tunnel_mode" ]; then
+        RESTART_MODE="$(cat "$INSTALL_DIR/tunnel_mode")"
+    elif grep -q -- '--url ' "$INSTALL_DIR/run-cloudflared.sh" 2>/dev/null; then
+        RESTART_MODE="temporary"
+    fi
     if [ -f /etc/systemd/system/vless-argo-clean-cloudflared.service ] && [ -d /run/systemd/system ]; then
         systemctl restart vless-argo-clean-cloudflared
         sleep 3
         systemctl --no-pager is-active vless-argo-clean-cloudflared
         echo "argo 已重启（systemd）"
+        if [ "$RESTART_MODE" = "temporary" ]; then
+            echo "注意：临时隧道重启后域名会变，正在从日志里找新域名并更新 client.txt……"
+            wait_for_temporary_domain || true
+        fi
     elif [ -x "$INSTALL_DIR/run-cloudflared.sh" ]; then
         # 非 systemd（例如 Alpine）方式：只杀 cwd 在本安装目录的 cloudflared，
         # 不碰四合一的 /etc/sing-box/argo，也不碰 sing-box
@@ -150,10 +227,15 @@ if [ "$ACTION" = "restart-argo" ]; then
         sleep 2
         (cd "$INSTALL_DIR" && nohup ./run-cloudflared.sh > cloudflared.log 2>&1 &)
         echo "argo 已重启（nohup），新进程日志在 $INSTALL_DIR/cloudflared.log"
-        sleep 5
-        grep -h "Registered tunnel connection" "$INSTALL_DIR/cloudflared.log" 2>/dev/null \
-            && echo "隧道已重新注册成功" \
-            || echo "提示：日志里还没看到 Registered tunnel connection，请先确认 Cloudflare 端 hostname 已建好，再看 cloudflared.log"
+        if [ "$RESTART_MODE" = "temporary" ]; then
+            echo "注意：临时隧道重启后域名会变，正在从日志里找新域名并更新 client.txt……"
+            wait_for_temporary_domain || true
+        else
+            sleep 5
+            grep -h "Registered tunnel connection" "$INSTALL_DIR/cloudflared.log" 2>/dev/null \
+                && echo "隧道已重新注册成功" \
+                || echo "提示：日志里还没看到 Registered tunnel connection，请先确认 Cloudflare 端 hostname 已建好，再看 cloudflared.log"
+        fi
     else
         echo "错误：找不到已安装的 argo（$INSTALL_DIR/run-cloudflared.sh 不存在），请先选 1 安装" >&2
         exit 1
@@ -164,6 +246,9 @@ fi
 # ---- 状态查看：不需要域名和 Token ----
 if [ "$ACTION" = "status" ]; then
     echo "安装目录：$INSTALL_DIR"
+    if [ -f "$INSTALL_DIR/tunnel_mode" ]; then
+        echo "隧道类型：$(cat "$INSTALL_DIR/tunnel_mode")（temporary = 临时隧道，重启后域名会变）"
+    fi
     if [ -f "$INSTALL_DIR/client.txt" ]; then
         echo "客户端链接："
         cat "$INSTALL_DIR/client.txt"
@@ -200,21 +285,29 @@ if [ "$ACTION" = "uninstall" ]; then
     exit 0
 fi
 
-# ---- 交互补齐必填项 ----
-if [ -z "$DOMAIN" ]; then
-    printf '域名（例如 vless.example.com）：'
-    read -r DOMAIN
+# ---- 交互补齐必填项（临时隧道跳过域名和 Token） ----
+if [ "$TUNNEL_MODE" = "temporary" ]; then
+    if [ -n "$DOMAIN" ]; then
+        echo "提示：临时隧道不能用自定义域名，已忽略 -d $DOMAIN，域名由 cloudflared 随机分配"
+    fi
+    # 占位域名：安装时先写进 client.txt，启动后解析到真实 trycloudflare 域名再覆盖
+    DOMAIN="__TEMPORARY_DOMAIN__"
+else
+    if [ -z "$DOMAIN" ]; then
+        printf '域名（例如 vless.example.com）：'
+        read -r DOMAIN
+    fi
+    if [ -z "$TOKEN" ] && [ "$DRY_RUN" -eq 0 ]; then
+        printf 'Argo Token（输入时不回显）：'
+        read -rs TOKEN
+        echo
+    fi
+    if [ "$DRY_RUN" -eq 1 ] && [ -z "$TOKEN" ]; then
+        TOKEN="YOUR_ARGO_TOKEN_HERE"
+    fi
+    [ -n "$DOMAIN" ] || { echo "错误：域名不能为空" >&2; exit 1; }
+    [ -n "$TOKEN" ] || { echo "错误：Argo Token 不能为空" >&2; exit 1; }
 fi
-if [ -z "$TOKEN" ] && [ "$DRY_RUN" -eq 0 ]; then
-    printf 'Argo Token（输入时不回显）：'
-    read -rs TOKEN
-    echo
-fi
-if [ "$DRY_RUN" -eq 1 ] && [ -z "$TOKEN" ]; then
-    TOKEN="YOUR_ARGO_TOKEN_HERE"
-fi
-[ -n "$DOMAIN" ] || { echo "错误：域名不能为空" >&2; exit 1; }
-[ -n "$TOKEN" ] || { echo "错误：Argo Token 不能为空" >&2; exit 1; }
 
 case "$WS_PATH" in
     /*) ;;
@@ -267,15 +360,26 @@ cat > "$INSTALL_DIR/config.json" <<EOF
 }
 EOF
 
-printf 'ARGO_AUTH=%s\n' "$TOKEN" > "$INSTALL_DIR/.env"
-chmod 600 "$INSTALL_DIR/.env"
+printf '%s\n' "$TUNNEL_MODE" > "$INSTALL_DIR/tunnel_mode"
 
-cat > "$INSTALL_DIR/run-cloudflared.sh" <<'EOS'
+if [ "$TUNNEL_MODE" = "temporary" ]; then
+    # 临时隧道不用 Token：删掉旧 .env，避免固定隧道切过来时残留旧 Token 被误认
+    rm -f "$INSTALL_DIR/.env"
+    cat > "$INSTALL_DIR/run-cloudflared.sh" <<EOS
+#!/bin/bash
+cd "\$(dirname "\$0")"
+exec ./cloudflared tunnel --no-autoupdate --url http://localhost:${LOCAL_PORT}
+EOS
+else
+    printf 'ARGO_AUTH=%s\n' "$TOKEN" > "$INSTALL_DIR/.env"
+    chmod 600 "$INSTALL_DIR/.env"
+    cat > "$INSTALL_DIR/run-cloudflared.sh" <<'EOS'
 #!/bin/bash
 cd "$(dirname "$0")"
 set -a; source ./.env; set +a
 exec ./cloudflared tunnel --no-autoupdate run --token "$ARGO_AUTH"
 EOS
+fi
 chmod +x "$INSTALL_DIR/run-cloudflared.sh"
 
 cat > "$INSTALL_DIR/start.sh" <<'EOS'
@@ -304,6 +408,9 @@ printf '%s\n' "$CLIENT_LINK" > "$INSTALL_DIR/client.txt"
 if [ "$DRY_RUN" -eq 1 ]; then
     echo "dry-run 完成，文件在 $INSTALL_DIR（未下载、未装服务、未启动）"
     echo "客户端链接：$CLIENT_LINK"
+    if [ "$TUNNEL_MODE" = "temporary" ]; then
+        echo "注意：临时隧道的真实域名要等 cloudflared 启动后才分配，上面链接里的 __TEMPORARY_DOMAIN__ 只是占位，启动后脚本会从日志里解析真实域名并重写 client.txt"
+    fi
     exit 0
 fi
 
@@ -374,15 +481,32 @@ else
         echo "提示：没有 systemd 或不是 root，改用 start.sh 手动启停"
     fi
     (cd "$INSTALL_DIR" && ./start.sh)
-    sleep 20
-    grep -h "Registered tunnel connection" "$INSTALL_DIR/cloudflared.log" 2>/dev/null \
-        && echo "隧道已注册成功" \
-        || echo "警告：cloudflared.log 里还没看到 Registered tunnel connection，请先确认 Cloudflare 端的 hostname 已建好，再看日志排查"
+    if [ "$TUNNEL_MODE" = "temporary" ]; then
+        echo "临时隧道启动中，正在等 cloudflared 分配域名……"
+    else
+        sleep 20
+        grep -h "Registered tunnel connection" "$INSTALL_DIR/cloudflared.log" 2>/dev/null \
+            && echo "隧道已注册成功" \
+            || echo "警告：cloudflared.log 里还没看到 Registered tunnel connection，请先确认 Cloudflare 端的 hostname 已建好，再看日志排查"
+    fi
+fi
+
+# 临时隧道：启动后从日志解析真实域名，覆盖占位链接
+if [ "$TUNNEL_MODE" = "temporary" ]; then
+    if wait_for_temporary_domain; then
+        DOMAIN="$(sed -n 's|.*@\([^:]*\):443.*|\1|p' "$INSTALL_DIR/client.txt" | head -1)"
+        CLIENT_LINK="$(cat "$INSTALL_DIR/client.txt")"
+    fi
 fi
 
 echo
 echo "完成。客户端链接（也已写入 $INSTALL_DIR/client.txt）："
 echo "$CLIENT_LINK"
 echo
-echo "参数：域名=$DOMAIN，本地端口=$LOCAL_PORT，WS 路径=$WS_PATH，UUID=$CLIENT_UUID"
-echo "换域名：改 Cloudflare 端 hostname 后，用新域名重新跑一遍本脚本即可（会覆盖配置并重启）"
+if [ "$TUNNEL_MODE" = "temporary" ]; then
+    echo "参数：隧道类型=临时（域名每次重启都会变，重启后脚本会自动更新 client.txt），本地端口=$LOCAL_PORT，WS 路径=$WS_PATH，UUID=$CLIENT_UUID"
+    echo "注意：临时隧道只适合临时测试，进程一停节点就没了；长期用请选固定隧道"
+else
+    echo "参数：域名=$DOMAIN，本地端口=$LOCAL_PORT，WS 路径=$WS_PATH，UUID=$CLIENT_UUID"
+    echo "换域名：改 Cloudflare 端 hostname 后，用新域名重新跑一遍本脚本即可（会覆盖配置并重启）"
+fi
