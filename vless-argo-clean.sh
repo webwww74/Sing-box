@@ -28,6 +28,7 @@
 #
 # 选择菜单（不带参数或 --menu 时出现）：
 #   1 安装 / 重装（含换域名：用新域名重装即可；安装时会先问固定还是临时）
+#   5 更新临时链接（不重启：已在外面重启过 argo、域名已变时，从日志里找当前域名重写 client.txt）
 #   2 卸载
 #   3 重新启动 argo（只重启 cloudflared，不动 sing-box）
 #   4 查看状态
@@ -46,6 +47,7 @@
 #   --temporary       临时隧道模式：不用 -d/-t，域名由 cloudflared 随机分配
 #   --status          查看运行状态和客户端链接
 #   --restart-argo    只重启 cloudflared（不重启 sing-box；临时隧道重启后域名会变，脚本会重写 client.txt）
+#   --refresh-temp-link  不重启，只从日志里找当前临时域名并重写 client.txt（适合在外面用 systemctl/start.sh 重启过之后补更新）
 #   --menu            显示选择菜单（不带参数时默认就是菜单）
 #   --uninstall [--force]  停止并删除本脚本装的东西
 #   -h, --help        显示帮助
@@ -88,14 +90,25 @@ usage() {
 }
 
 # 从 cloudflared 日志（systemd 用 journal，nohup 用 cloudflared.log）
-# 里找临时隧道分配的域名，找不到返回空，不报错
+# 里找临时隧道分配的域名，找不到返回空，不报错。
+# 注意：必须取最新的一条（tail -1），不能取第一条——systemd 的 journal 是
+# 累积的，重启后旧域名还在日志里，取第一条就会误把旧域名当新域名。
 trycloudflare_domain() {
     local dom=""
     if [ -f /etc/systemd/system/vless-argo-clean-cloudflared.service ] && [ -d /run/systemd/system ]; then
-        dom="$(journalctl -u vless-argo-clean-cloudflared --no-pager -n 100 2>/dev/null \
-            | grep -o 'https://[A-Za-z0-9-]*\.trycloudflare\.com' | head -1 | sed 's|https://||' || true)"
+        dom="$(journalctl -u vless-argo-clean-cloudflared --no-pager 2>/dev/null \
+            | grep -o 'https://[A-Za-z0-9-]*\.trycloudflare\.com' | tail -1 | sed 's|https://||' || true)"
     elif [ -f "$INSTALL_DIR/cloudflared.log" ]; then
-        dom="$(grep -o 'https://[A-Za-z0-9-]*\.trycloudflare\.com' "$INSTALL_DIR/cloudflared.log" 2>/dev/null | head -1 | sed 's|https://||' || true)"
+        dom="$(grep -o 'https://[A-Za-z0-9-]*\.trycloudflare\.com' "$INSTALL_DIR/cloudflared.log" 2>/dev/null | tail -1 | sed 's|https://||' || true)"
+    fi
+    printf '%s' "$dom"
+}
+
+# 从当前 client.txt 里读旧临时域名（不是 trycloudflare 域名时返回空）
+current_temp_domain() {
+    local dom=""
+    if [ -f "$INSTALL_DIR/client.txt" ]; then
+        dom="$(grep -o '[A-Za-z0-9-]*\.trycloudflare\.com' "$INSTALL_DIR/client.txt" 2>/dev/null | head -1 || true)"
     fi
     printf '%s' "$dom"
 }
@@ -112,12 +125,16 @@ regenerate_temporary_link() {
     cat "$INSTALL_DIR/client.txt"
 }
 
-# 等临时隧道域名出现（最多约 60 秒），找到了就重写 client.txt 并打印
+# 等临时隧道域名出现（最多约 60 秒），找到了就重写 client.txt 并打印。
+# 关键：必须排除 client.txt 里已有的旧域名——否则 systemd 的累积日志里
+# 旧域名会立刻被误认成新域名，脚本会“成功”地把旧链接又写回去，
+# 看起来像没更新，实际是更新成了旧的。
 wait_for_temporary_domain() {
-    local i dom
+    local i dom old_dom
+    old_dom="$(current_temp_domain)"
     for i in $(seq 1 20); do
         dom="$(trycloudflare_domain)"
-        if [ -n "$dom" ]; then
+        if [ -n "$dom" ] && [ "$dom" != "$old_dom" ]; then
             echo "临时隧道域名：$dom"
             regenerate_temporary_link "$dom" || return 1
             return 0
@@ -144,6 +161,7 @@ while [ $# -gt 0 ]; do
         --temporary) TUNNEL_MODE="temporary"; shift ;;
         --status) ACTION="status"; shift ;;
         --restart-argo) ACTION="restart-argo"; shift ;;
+        --refresh-temp-link) ACTION="refresh-temp"; shift ;;
         --menu) SHOW_MENU=1; shift ;;
         --uninstall) ACTION="uninstall"; shift ;;
         --force) FORCE=1; shift ;;
@@ -159,8 +177,9 @@ if [ "$SHOW_MENU" -eq 1 ] && [ "$ACTION" = "install" ]; then
     echo "  2) 卸载"
     echo "  3) 重新启动 argo（只重启 cloudflared，不动 sing-box）"
     echo "  4) 查看状态"
+    echo "  5) 更新临时链接（不重启，从日志里找当前临时域名重写 client.txt）"
     echo "  0) 退出"
-    printf '请选择 [0-4]：'
+    printf '请选择 [0-5]：'
     read -r choice
     case "$choice" in
         1)
@@ -193,6 +212,7 @@ if [ "$SHOW_MENU" -eq 1 ] && [ "$ACTION" = "install" ]; then
         2) ACTION="uninstall" ;;
         3) ACTION="restart-argo" ;;
         4) ACTION="status" ;;
+        5) ACTION="refresh-temp" ;;
         0) echo "已退出"; exit 0 ;;
         *) echo "无效选择：$choice" >&2; exit 1 ;;
     esac
@@ -240,6 +260,30 @@ if [ "$ACTION" = "restart-argo" ]; then
         echo "错误：找不到已安装的 argo（$INSTALL_DIR/run-cloudflared.sh 不存在），请先选 1 安装" >&2
         exit 1
     fi
+    exit 0
+fi
+
+# ---- 只更新临时链接：不重启，适合在外面重启过 argo 之后补更新 ----
+if [ "$ACTION" = "refresh-temp" ]; then
+    if [ ! -f "$INSTALL_DIR/config.json" ]; then
+        echo "错误：找不到 $INSTALL_DIR/config.json，请先选 1 安装" >&2
+        exit 1
+    fi
+    NEW_DOM="$(trycloudflare_domain)"
+    OLD_DOM="$(current_temp_domain)"
+    if [ -z "$NEW_DOM" ]; then
+        echo "错误：日志里没找到 trycloudflare.com 域名，请先确认 cloudflared 正在运行并看日志" >&2
+        echo "  systemd：journalctl -u vless-argo-clean-cloudflared --no-pager | grep trycloudflare"
+        echo "  nohup：grep -o 'https://[^ ]*trycloudflare.com' $INSTALL_DIR/cloudflared.log"
+        exit 1
+    fi
+    if [ -n "$OLD_DOM" ] && [ "$NEW_DOM" = "$OLD_DOM" ]; then
+        echo "日志里的域名和 client.txt 一致（$NEW_DOM），没有新域名可更新"
+        echo "如果域名其实已经变了，说明日志里还没有新域名的那行，请等 cloudflared 打印出新域名后再跑一次"
+        exit 0
+    fi
+    echo "临时隧道域名：$NEW_DOM"
+    regenerate_temporary_link "$NEW_DOM"
     exit 0
 fi
 
