@@ -50,11 +50,11 @@ PORT=开放的端口 确保后面3个端口可用 CFIP为优选IP或优选域名
 ```
 PORT=你的端口 CFIP=www.visa.com.tw CFPORT=443 bash <(curl -Ls https://raw.githubusercontent.com/eooce/sing-box/main/sing-box.sh)
 ```
-## VPS一键vless-argo议安装脚本
+## VPS一键vless-argo议安装脚本-PATCH
 ```
-bash <(curl -Ls https://raw.githubusercontent.com/webwww74/Sing-box/main/vless-argo-install.sh)
+bash <(curl -Ls https://raw.githubusercontent.com/webwww74/Sing-box/main/vless-argo-merge-patch.sh)
 ```
-## VPS一键vless-argo议纯洁安装脚本
+## VPS一键vless-argo议纯洁安装脚本-PASS
 ```
 bash <(curl -Ls https://raw.githubusercontent.com/webwww74/Sing-box/main/vless-argo-clean.sh)
 ```
