@@ -25,6 +25,9 @@
 #   临时隧道：不用 Token、不用自己域名、不用建 Tunnel，cloudflared 一跑
 #             就随机分配一个 *.trycloudflare.com 域名；代价是域名每次重启
 #             都会变，进程一停节点就没了，只适合临时测试，不适合长期用。
+#   切换：固定 <-> 临时切换时，重装后脚本会自动重新启动 argo 一次，
+#         不用再手动选菜单 3——旧进程不会自动读新 Token/新启动脚本，
+#         不重启就会出现新域名不通、旧域名还在线的情况。
 #
 # 选择菜单（不带参数或 --menu 时出现）：
 #   1 安装 / 重装（含换域名：用新域名重装即可；安装时会先问固定还是临时）
@@ -369,6 +372,25 @@ else
     CLIENT_UUID="$(python3 -c 'import uuid; print(uuid.uuid4())' 2>/dev/null || echo '11111111-2222-3333-4444-555555555555')"
 fi
 
+# 切换检测：在覆盖 tunnel_mode 之前记下上一模式（dry-run 会改 INSTALL_DIR，所以必须先记）
+PREV_TUNNEL_MODE=""
+if [ -f "$INSTALL_DIR/tunnel_mode" ]; then
+    PREV_TUNNEL_MODE="$(cat "$INSTALL_DIR/tunnel_mode")"
+elif grep -q -- '--url ' "$INSTALL_DIR/run-cloudflared.sh" 2>/dev/null; then
+    PREV_TUNNEL_MODE="temporary"
+elif [ -f "$INSTALL_DIR/run-cloudflared.sh" ]; then
+    PREV_TUNNEL_MODE="fixed"
+fi
+MODE_SWITCHED=0
+if [ -n "$PREV_TUNNEL_MODE" ] && [ "$PREV_TUNNEL_MODE" != "$TUNNEL_MODE" ]; then
+    MODE_SWITCHED=1
+    if [ "$DRY_RUN" -eq 1 ]; then
+        echo "检测到隧道类型切换：$PREV_TUNNEL_MODE -> $TUNNEL_MODE（dry-run，仅生成文件，不实际重启）"
+    else
+        echo "检测到隧道类型切换：$PREV_TUNNEL_MODE -> $TUNNEL_MODE，安装完成后将重新启动 argo 一次"
+    fi
+fi
+
 if [ "$DRY_RUN" -eq 1 ]; then
     INSTALL_DIR="./vless-argo-clean-out"
 fi
@@ -517,14 +539,34 @@ RestartSec=3
 WantedBy=multi-user.target
 EOF
     systemctl daemon-reload
-    systemctl enable --now vless-argo-clean-singbox vless-argo-clean-cloudflared
+    systemctl enable vless-argo-clean-singbox vless-argo-clean-cloudflared
+    # 关键：不能只用 enable --now——服务已在运行时它不会重启，旧进程会继续
+    # 用旧的 .env/run-cloudflared.sh 跑，切换隧道类型（或换 Token/域名）后
+    # 必须显式 restart 一次，新配置才生效
+    systemctl restart vless-argo-clean-singbox vless-argo-clean-cloudflared
+    if [ "$MODE_SWITCHED" -eq 1 ]; then
+        echo "隧道类型已切换，argo 已重新启动一次（新模式：$TUNNEL_MODE）"
+    fi
     sleep 8
     journalctl -u vless-argo-clean-cloudflared --no-pager -n 20 2>/dev/null | tail -20 || true
 else
     if [ "$USE_SYSTEMD" -eq 1 ]; then
         echo "提示：没有 systemd 或不是 root，改用 start.sh 手动启停"
     fi
+    # 非 systemd：先停掉旧进程再启动，否则旧 sing-box 还占着 8002、
+    # 旧 cloudflared 还连着旧隧道，新进程起不来或新旧隧道同时在线。
+    # 只杀 cwd 在本安装目录的进程，不碰四合一的 /etc/sing-box 进程。
+    if [ -x "$INSTALL_DIR/stop.sh" ]; then (cd "$INSTALL_DIR" && ./stop.sh) 2>/dev/null || true; fi
+    for pid in $(pgrep -f "sing-box run" 2>/dev/null || true) $(pgrep -f cloudflared 2>/dev/null || true); do
+        if [ -r "/proc/$pid/cwd" ] && [ "$(readlink "/proc/$pid/cwd" 2>/dev/null)" = "$INSTALL_DIR" ]; then
+            kill "$pid" 2>/dev/null || true
+        fi
+    done
+    sleep 2
     (cd "$INSTALL_DIR" && ./start.sh)
+    if [ "$MODE_SWITCHED" -eq 1 ]; then
+        echo "隧道类型已切换，argo 已重新启动一次（新模式：$TUNNEL_MODE）"
+    fi
     if [ "$TUNNEL_MODE" = "temporary" ]; then
         echo "临时隧道启动中，正在等 cloudflared 分配域名……"
     else
