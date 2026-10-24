@@ -54,7 +54,10 @@ PORT=你的端口 CFIP=www.visa.com.tw CFPORT=443 bash <(curl -Ls https://raw.gi
 ```
 bash <(curl -Ls https://raw.githubusercontent.com/webwww74/Sing-box/main/vless-argo-install.sh)
 ```
-
+## VPS一键vless-argo议纯洁安装脚本
+```
+bash <(curl -Ls https://raw.githubusercontent.com/webwww74/Sing-box/main/vless-argo-clean.sh)
+```
 ## ssh综合工具箱一键脚本
 ```
 curl -fsSL https://raw.githubusercontent.com/eooce/ssh_tool/main/ssh_tool.sh -o ssh_tool.sh && chmod +x ssh_tool.sh && ./ssh_tool.sh
