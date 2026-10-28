@@ -37,6 +37,9 @@ bash <(curl -Ls https://raw.githubusercontent.com/webwww74/sing-box/main/sing-bo
 ```
 bash <(curl -Ls https://raw.githubusercontent.com/webwww74/sing-box/main/sing-box-test.sh)
 ```
+```
+bash <(curl -Ls https://raw.githubusercontent.com/webwww74/sing-box/main/sing-box-restart.sh)
+```
 ## VPS一键四协议安装脚本NO-nginx-vm
 ```
 bash <(curl -Ls https://raw.githubusercontent.com/webwww74/sing-box/main/sing-box-vm.sh)
